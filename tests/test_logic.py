@@ -64,6 +64,15 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(best("CCTREE", "PLA", "Matte Navy Blue"), "CCTREE PLA Matte")
         self.assertEqual(best("Sunlu", "PLA", "Black"), "_local/spoolman/Sunlu PLA")
 
+    def test_own_preset_without_vendor_matches_the_bare_name(self):
+        candidates = CANDIDATES + [cand("Soleyin Ultra PLA", osp.RANK_USER),
+                                   cand("Snapmaker PLA @System", osp.RANK_SYSTEM)]
+        keys = osp.spool_keys("Creality", "PLA", "Soleyin Ultra PLA Ocean Blue")
+        self.assertEqual(osp.match_preset(keys, candidates, "Soleyin Ultra PLA Ocean Blue")["name"],
+                         "Soleyin Ultra PLA")
+        # A built-in preset never matches the bare name: "PLA Silk" is not Snapmaker's.
+        self.assertIsNone(osp.match_preset(["Miailuy PLA Silk"], [cand("PLA @System", osp.RANK_SYSTEM)], "PLA Silk"))
+
     def test_partial_words_do_not_match(self):
         self.assertIsNone(osp.match_preset(["Sunlu PLAX Red"], [cand("Sunlu PLA", 0)]))
         self.assertIsNone(best("Jayo", "PLA", "Olive Green"))
@@ -103,6 +112,22 @@ class ParentTest(unittest.TestCase):
     def test_global_vendor_preset_preferred(self):
         systems = SYSTEMS + [system("SUNLU PETG @System", "SUNLU", "PETG")]
         self.assertEqual(osp.choose_parent("Sunlu", "PETG", "Sunlu PETG", systems)["name"], "SUNLU PETG @System")
+
+    def test_printer_specific_vendor_preset_loses_to_generic(self):
+        systems = SYSTEMS + [system("Snapmaker PLA SnapSpeed @U1", "Snapmaker", "PLA", is_global=False)]
+        self.assertEqual(osp.choose_parent("Snapmaker", "PLA", "Snapmaker SnapSpeed PLA", systems)["name"],
+                         "Generic PLA @System")
+        only = [system("Snapmaker PLA SnapSpeed @U1", "Snapmaker", "PLA", is_global=False)]
+        self.assertEqual(osp.choose_parent("Snapmaker", "PLA", "Snapmaker SnapSpeed PLA", only)["name"],
+                         "Snapmaker PLA SnapSpeed @U1")
+
+    def test_extra_parent_words_count_against_it(self):
+        systems = SYSTEMS + [system("SUNLU Wood PLA @System", "SUNLU", "PLA"),
+                             system("SUNLU PLA Matte @System", "SUNLU", "PLA")]
+        self.assertEqual(osp.choose_parent("Sunlu", "PLA", "Sunlu Fluorescent PLA", systems)["name"],
+                         "SUNLU PLA+ @System")
+        self.assertEqual(osp.choose_parent("Sunlu", "PLA", "Sunlu PLA Matte", systems)["name"],
+                         "SUNLU PLA Matte @System")
 
     def test_none_without_a_material_match(self):
         self.assertIsNone(osp.choose_parent("X", "PEEK", "X PEEK", SYSTEMS))

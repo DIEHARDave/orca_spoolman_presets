@@ -32,6 +32,8 @@ The preset for each spool is the first one that applies:
    - `<vendor> <filament name>`, for example "Sunlu HS PLA+ 2.0 Olive Green", or
    - `<vendor> <material> <filament name>`, for example "Epelay PLA+ Green".
 
+   If neither matches, the filament name alone is tried against your own presets and the ones this plugin created, so a preset named "Soleyin Ultra PLA" without its vendor still matches "Soleyin Ultra PLA Ocean Blue".
+
    Case doesn't matter. On a tie, your own preset wins over a preset this plugin created, which wins over a built-in one. Only presets compatible with the selected printer and shown in the filament list count.
 
 So name your presets after the product line, as Spoolman's vendor and filament names spell it:
@@ -51,7 +53,7 @@ The selections are ordinary slot choices in the project, as if you had picked th
 
 Each new preset:
 
-- **inherits a built-in preset:** the vendor's own preset for that material when OrcaSlicer has one (the one sharing the most words with the line), otherwise Generic \<material\>. Presets meant for any printer come first;
+- **inherits a built-in preset meant for any printer:** the vendor's own preset for that material when OrcaSlicer has one (the one sharing the most words with the line and adding the fewest others), otherwise Generic \<material\>. A printer-specific parent is used only when nothing else exists, because the new preset would then show up only for that printer;
 - **takes from Spoolman:** the nozzle temperature, the bed temperature (smooth and textured plates), density and diameter, using the most common values among the filaments in the group;
 - **is saved to** the local preset bundle `user/<your preset folder>/_local/spoolman/filament/`, which OrcaSlicer loads immediately.
 

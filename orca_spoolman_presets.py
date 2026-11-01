@@ -106,20 +106,27 @@ def spool_keys(vendor, material, name):
     return [k for k in keys if k]
 
 
-def match_preset(keys, candidates):
+def match_preset(keys, candidates, name=""):
     """Best candidate for any key: the longest base that is a whole-word prefix, lowest rank on a tie.
 
-    candidates: dicts with "name", "base" and "rank".
+    candidates: dicts with "name", "base" and "rank". When no key matches, the bare filament name
+    is tried against your own and this plugin's presets only, for presets named without the vendor.
     """
-    best = None
-    for key in keys:
-        for cand in candidates:
-            if not _is_word_prefix(key, cand["base"]):
-                continue
-            if best is None or len(cand["base"]) > len(best["base"]) or (
-                    len(cand["base"]) == len(best["base"]) and cand["rank"] < best["rank"]):
-                best = cand
-    return best
+    def best_of(keys, pool):
+        best = None
+        for key in keys:
+            for cand in pool:
+                if not _is_word_prefix(key, cand["base"]):
+                    continue
+                if best is None or len(cand["base"]) > len(best["base"]) or (
+                        len(cand["base"]) == len(best["base"]) and cand["rank"] < best["rank"]):
+                    best = cand
+        return best
+
+    found = best_of(keys, candidates)
+    if found is None and name.strip():
+        found = best_of([name.strip()], [c for c in candidates if c["rank"] != RANK_SYSTEM])
+    return found
 
 
 def find_named_preset(name, candidates):
@@ -159,32 +166,40 @@ def propose_line(name, material):
     return " ".join(line)
 
 
-def _tokens(text):
-    return {t.casefold() for t in re.split(r"\s+", text or "") if t}
+def _tokens(text, loose=False):
+    tokens = {t.casefold() for t in re.split(r"\s+", text or "") if t}
+    return {t.rstrip("+") for t in tokens} if loose else tokens
 
 
 def choose_parent(vendor, material, line, systems):
-    """The built-in preset a new one inherits: the vendor's own for the material, else Generic.
+    """The built-in preset a new one inherits.
 
     systems: dicts with "name", "base", "vendor", "type" and "global" (compatible with any printer).
-    Among the vendor's presets the one sharing most words with the line wins; global ones first.
+    A preset for any printer always beats a printer-specific one, so the new preset is usable on
+    every printer: the vendor's own for the material, else Generic <material>, and only then a
+    printer-specific one. Among the vendor's presets the one sharing most words with the line and
+    adding fewest others wins ("PLA" and "PLA+" count as the same word).
     """
     material_cf = (material or "").casefold()
     vendor_cf = (vendor or "").casefold()
-    line_tokens = _tokens(line)
+    line_loose, line_exact = _tokens(line, True), _tokens(line)
 
     def pick(pool):
         if not pool:
             return None
-        return max(pool, key=lambda s: (s["global"], len(line_tokens & _tokens(s["base"])), -len(s["base"])))
+        return max(pool, key=lambda s: (len(line_loose & _tokens(s["base"], True)),
+                                        -len(_tokens(s["base"], True) - line_loose),
+                                        len(line_exact & _tokens(s["base"])), -len(s["base"])))
 
     typed = [s for s in systems if (s["type"] or "").casefold() == material_cf]
     own = [s for s in typed if (s["vendor"] or "").casefold() == vendor_cf]
-    if own:
-        return pick(own)
     generic = [s for s in typed if s["base"].casefold().startswith("generic ")]
-    exact = [s for s in generic if s["base"].casefold() == "generic " + material_cf]
-    return pick(exact) or pick(generic) or pick(typed)
+    exact_generic = [s for s in generic if s["base"].casefold() == "generic " + material_cf]
+    for pool in (own, exact_generic, generic):
+        found = pick([s for s in pool if s["global"]])
+        if found:
+            return found
+    return pick(own) or pick(generic) or pick(typed)
 
 
 def most_common(values):
@@ -202,7 +217,7 @@ def missing_presets(filaments, candidates, systems):
         extra = fil.get("extra") or {}
         if decode_extra(extra.get("orca_preset")) or not material:
             continue
-        if match_preset(spool_keys(vendor, material, name), candidates):
+        if match_preset(spool_keys(vendor, material, name), candidates, name):
             continue
         preset_name = " ".join(p for p in (vendor, propose_line(name, material)) if p)
         group = groups.setdefault(preset_name.casefold(), {
@@ -393,7 +408,8 @@ def sync_slots(moonraker, snap):
                 continue
             how = "orca_preset"
         else:
-            cand = match_preset(spool_keys(vendor, fil.get("material"), fil.get("name")), snap["candidates"])
+            cand = match_preset(spool_keys(vendor, fil.get("material"), fil.get("name")), snap["candidates"],
+                                fil.get("name") or "")
             if cand is None:
                 row["status"] = "No matching preset; see Create missing presets"
                 continue
