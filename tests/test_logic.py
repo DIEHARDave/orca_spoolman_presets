@@ -166,7 +166,14 @@ class MiscTest(unittest.TestCase):
             "T0": {"lane": "0", "material": "PLA", "spool_id": 77},
             "bad": "x",
         })
-        self.assertEqual(lanes, [(1, 77, "PLA"), (2, None, "")])
+        self.assertEqual(lanes, [(1, 77, "PLA", ""), (2, None, "", "")])
+        lanes = osp.lanes_from_lane_data({"T0": {"lane": "0", "spool_id": 25, "color": "#29cb94"}})
+        self.assertEqual(lanes, [(1, 25, "", "#29CB94")])
+
+    def test_normalize_color(self):
+        for value, expected in (("#29cb94", "#29CB94"), ("29CB94FF", "#29CB94"), ("0x000000", "#000000"),
+                                ("", ""), ("#12345", ""), (None, ""), ("red", "")):
+            self.assertEqual(osp.normalize_color(value), expected, value)
 
     def test_preset_names(self):
         self.assertTrue(osp.valid_preset_name("Sunlu HS PLA+ 2.0"))

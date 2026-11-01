@@ -22,8 +22,9 @@ OrcaSlicer asks once for permission to reach that host, and once to write the pr
 
 ## Sync slots
 
-1. Run OrcaSlicer's own filament sync first. It sets the number of slots and their colors.
+1. Run OrcaSlicer's own filament sync first. It sets the number of slots. The printer must be connected: if the sync button does nothing, check that the printer's host includes Moonraker's port, for example `10.0.1.107:7125`.
 2. Click **Sync slots from printer**. Lane 0 goes to slot 1, lane 1 to slot 2, and so on.
+3. Selecting a preset gives the slot that preset's default color. Run OrcaSlicer's sync again with **Preferences → Filament sync mode** set to **Color only** to get the spools' colors back. OrcaSlicer builds whose plugin API has `set_slot_color` don't need this step: the plugin sets each slot to its lane's color itself.
 
 The preset for each spool is the first one that applies:
 

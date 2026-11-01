@@ -272,8 +272,19 @@ def valid_preset_name(name):
         and " @" not in name and not name.startswith(".")
 
 
+def normalize_color(value):
+    """'#RRGGBB' from '#rrggbb', 'RRGGBB', '0xRRGGBB' or with an alpha byte; '' when not a color."""
+    text = str(value or "").strip()
+    if text[:2].lower() == "0x":
+        text = text[2:]
+    text = text.lstrip("#")
+    if len(text) == 8:
+        text = text[:6]
+    return "#" + text.upper() if re.fullmatch(r"[0-9A-Fa-f]{6}", text) else ""
+
+
 def lanes_from_lane_data(value):
-    """(slot number, spool id, lane material) for each lane, slot = lane + 1."""
+    """(slot number, spool id, lane material, lane color) for each lane, slot = lane + 1."""
     lanes = []
     for lane in (value or {}).values():
         if not isinstance(lane, dict):
@@ -284,8 +295,17 @@ def lanes_from_lane_data(value):
             continue
         spool_id = lane.get("spool_id")
         lanes.append((index + 1, spool_id if isinstance(spool_id, int) and spool_id > 0 else None,
-                      lane.get("material") or ""))
+                      lane.get("material") or "", normalize_color(lane.get("color"))))
     return sorted(lanes)
+
+
+def set_slot_color(slot, color):
+    """Set a slot's color where Orca lets plugins (preset.filament.set_slot_color); False otherwise."""
+    setter = getattr(orca.host.preset.filament, "set_slot_color", None)
+    if setter is None or not color:
+        return False
+    setter(slot, [color])
+    return True
 
 
 # Moonraker and Spoolman
@@ -389,7 +409,7 @@ def sync_slots(moonraker, snap):
     """Select a preset per lane; returns one report row per lane."""
     rows = []
     slots = snap["slots"]
-    for slot, spool_id, lane_material in lanes_from_lane_data(moonraker.lane_data()):
+    for slot, spool_id, lane_material, lane_color in lanes_from_lane_data(moonraker.lane_data()):
         row = {"slot": slot, "spool": spool_id, "spool_name": "", "preset": "", "status": ""}
         rows.append(row)
         if spool_id is None:
@@ -417,11 +437,15 @@ def sync_slots(moonraker, snap):
         row["preset"] = cand["base"]
         if slot > len(slots):
             row["status"] = "Orca has only %d filament slots; run Orca's sync first" % len(slots)
-        elif slots[slot - 1] == cand["name"]:
+            continue
+        if slots[slot - 1] == cand["name"]:
             row["status"] = "Already set (%s)" % how
         else:
             orca.host.preset.filament.begin_update(slot, cand["name"]).commit()
             row["status"] = "Selected (%s)" % how
+        # Selecting a preset gives the slot that preset's default color; put the spool's back.
+        if set_slot_color(slot, lane_color or normalize_color(fil.get("color_hex"))):
+            row["status"] += ", color set"
     return rows
 
 
